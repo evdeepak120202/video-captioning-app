@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "app/api/render/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/generate-captions/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}
+
