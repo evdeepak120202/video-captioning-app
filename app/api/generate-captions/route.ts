@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { access, readFile } from "fs/promises";
-import { join } from "path";
-import { constants } from "fs";
 import { AssemblyAI } from "assemblyai";
 
 export interface Caption {
@@ -32,81 +29,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Handle both /api/video/ and /uploads/ paths
-    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
-    let audioInput: string | Buffer; // Can be file path, URL, or Buffer
-    
-    // Check if it's an external URL
-    if (videoUrl.startsWith("http")) {
-      // For external URLs, use them directly
-      audioInput = videoUrl;
-    } else {
-      // Extract filename from videoUrl
-      let filename: string;
-      if (videoUrl.startsWith("/api/video/")) {
-        filename = videoUrl.replace("/api/video/", "");
-      } else if (videoUrl.startsWith("/uploads/")) {
-        filename = videoUrl.replace("/uploads/", "");
-      } else {
-        filename = videoUrl;
-      }
-      
-      // Find the file path
-      let videoPath: string;
-      if (isVercel) {
-        // In Vercel, files are in /tmp/uploads
-        videoPath = join("/tmp", "uploads", filename);
-      } else {
-        // Local: try public/uploads first, then /tmp/uploads
-        videoPath = join(process.cwd(), "public", "uploads", filename);
-        try {
-          await access(videoPath, constants.F_OK);
-        } catch {
-          // Try /tmp as fallback
-          const altPath = join("/tmp", "uploads", filename);
-          try {
-            await access(altPath, constants.F_OK);
-            videoPath = altPath;
-          } catch {
-            return NextResponse.json(
-              { error: `Video file not found at ${videoPath} or ${altPath}` },
-              { status: 404 }
-            );
-          }
-        }
-      }
-      
-      // Verify file exists
-      try {
-        await access(videoPath, constants.F_OK);
-      } catch {
-        return NextResponse.json(
-          { error: `Video file not found at ${videoPath}` },
-          { status: 404 }
-        );
-      }
-      
-      // In Vercel, read the file and upload directly to AssemblyAI
-      // This avoids issues with URL accessibility
-      if (isVercel) {
-        console.log("Reading video file from:", videoPath);
-        const fileBuffer = await readFile(videoPath);
-        audioInput = fileBuffer;
-        console.log("File read successfully, size:", fileBuffer.length, "bytes");
-      } else {
-        // Local development - use file path
-        audioInput = videoPath;
-      }
-    }
-
     const client = new AssemblyAI({
       apiKey: apiKey,
     });
 
-    console.log("Starting transcription with AssemblyAI for:", audioInput);
+    console.log("Starting transcription with AssemblyAI for:", videoUrl);
 
     const transcript = await client.transcripts.transcribe({
-      audio: audioInput,
+      audio: videoUrl,
       speech_model: "best",
       language_codes: ["en", "hi"],
       word_boost: ["guys", "movie", "phone", "ok", "bye", "hello"],
@@ -192,4 +122,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

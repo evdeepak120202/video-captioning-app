@@ -19,16 +19,6 @@ export async function POST(request: NextRequest) {
       10
     );
 
-    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
-    const protocol = request.headers.get("x-forwarded-proto") || (isVercel ? "https" : "http");
-    const host = request.headers.get("host") || request.headers.get("x-forwarded-host") || "localhost:3000";
-    const baseUrl = `${protocol}://${host}`;
-
-    let fullVideoUrl = videoUrl;
-    if (videoUrl.startsWith("/")) {
-      fullVideoUrl = `${baseUrl}${videoUrl}`;
-    }
-
     const isLocal = !process.env.VERCEL && !process.env.VERCEL_ENV;
     
     let renderedVideoPath: string | null = null;
@@ -44,7 +34,7 @@ export async function POST(request: NextRequest) {
         }
 
         const renderData = {
-          videoUrl: fullVideoUrl,
+          videoUrl: videoUrl,
           captions,
           captionStyle: captionStyle || "bottom-centered",
           fps,
@@ -125,7 +115,7 @@ const path = require("path");
 const fs = require("fs");
 
 async function render() {
-  const videoUrl = ${JSON.stringify(fullVideoUrl)};
+  const videoUrl = ${JSON.stringify(videoUrl)};
   const captions = ${JSON.stringify(captions)};
   const captionStyle = ${JSON.stringify(captionStyle || "bottom-centered")};
   const fps = ${fps};

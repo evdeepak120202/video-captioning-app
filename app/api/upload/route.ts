@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { existsSync } from "fs";
+import { put } from "@vercel/blob";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,35 +17,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Use /tmp in Vercel (serverless), public/uploads locally
-    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
-    const uploadsDir = isVercel 
-      ? join("/tmp", "uploads")
-      : join(process.cwd(), "public", "uploads");
-    
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true });
+    const token = process.env.video_captioning_READ_WRITE_TOKEN;
+    if (!token) {
+      return NextResponse.json(
+        { error: "Blob token not configured" },
+        { status: 500 }
+      );
     }
 
     const timestamp = Date.now();
     const filename = `${timestamp}-${file.name}`;
-    const filepath = join(uploadsDir, filename);
 
-    await writeFile(filepath, buffer);
-
-    // Return API route URL in Vercel, public path locally
-    const videoUrl = isVercel 
-      ? `/api/video/${filename}`
-      : `/uploads/${filename}`;
+    const blob = await put(filename, file, {
+      access: "public",
+      token,
+    });
 
     return NextResponse.json({
       success: true,
-      videoUrl,
+      videoUrl: blob.url,
       filename,
-      filepath, // Include filepath for server-side access
     });
   } catch (error) {
     console.error("Upload error:", error);
@@ -57,4 +46,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
