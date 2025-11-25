@@ -124,6 +124,10 @@ export default function HomePage() {
               </div>
               <div className="flex items-start gap-3">
                 <div className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-2 shrink-0" />
+                <p><strong>Vercel Blob</strong> - for video file storage</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-2 shrink-0" />
                 <p><strong>Vercel</strong> - deployed and hosted here</p>
               </div>
             </CardContent>

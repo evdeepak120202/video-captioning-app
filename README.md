@@ -21,9 +21,11 @@ npm install
 
 ```env
 ASSEMBLY_AI_API=your_assemblyai_api_key_here
+VIDEO_CAPTIONING_READ_WRITE_TOKEN=your_vercel_blob_token_here
 ```
 
 Get your API key from [AssemblyAI](https://www.assemblyai.com/).
+Get your Vercel Blob token from your [Vercel dashboard](https://vercel.com/dashboard).
 
 3. Run the development server:
 
