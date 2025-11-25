@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
       10
     );
 
-    const protocol = request.headers.get("x-forwarded-proto") || "http";
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+    const protocol = request.headers.get("x-forwarded-proto") || (isVercel ? "https" : "http");
     const host = request.headers.get("host") || request.headers.get("x-forwarded-host") || "localhost:3000";
     const baseUrl = `${protocol}://${host}`;
 

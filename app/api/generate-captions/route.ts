@@ -32,24 +32,78 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const videoPath = join(process.cwd(), "public", videoUrl);
-    try {
-      await access(videoPath, constants.F_OK);
-    } catch {
-      return NextResponse.json(
-        { error: "Video file not found" },
-        { status: 404 }
-      );
+    // Handle both /api/video/ and /uploads/ paths
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+    let audioInput: string; // Can be file path or URL
+    
+    if (isVercel) {
+      // In Vercel, use URL for AssemblyAI since files are in /tmp
+      const protocol = request.headers.get("x-forwarded-proto") || "https";
+      const host = request.headers.get("host") || request.headers.get("x-forwarded-host");
+      
+      if (!host) {
+        return NextResponse.json(
+          { error: "Could not determine host" },
+          { status: 500 }
+        );
+      }
+      
+      // Construct full URL
+      if (videoUrl.startsWith("/api/video/")) {
+        audioInput = `${protocol}://${host}${videoUrl}`;
+      } else if (videoUrl.startsWith("/uploads/")) {
+        // Convert /uploads/ to /api/video/
+        const filename = videoUrl.replace("/uploads/", "");
+        audioInput = `${protocol}://${host}/api/video/${filename}`;
+      } else if (videoUrl.startsWith("http")) {
+        // Already a full URL
+        audioInput = videoUrl;
+      } else {
+        // Assume it's a filename
+        audioInput = `${protocol}://${host}/api/video/${videoUrl}`;
+      }
+    } else {
+      // Local development - use file path
+      let videoPath: string;
+      
+      if (videoUrl.startsWith("/api/video/")) {
+        const filename = videoUrl.replace("/api/video/", "");
+        videoPath = join("/tmp", "uploads", filename);
+      } else if (videoUrl.startsWith("/uploads/")) {
+        const filename = videoUrl.replace("/uploads/", "");
+        videoPath = join(process.cwd(), "public", "uploads", filename);
+      } else {
+        videoPath = join(process.cwd(), "public", videoUrl.startsWith("/") ? videoUrl.slice(1) : videoUrl);
+      }
+      
+      try {
+        await access(videoPath, constants.F_OK);
+      } catch {
+        // Try /tmp as fallback
+        const filename = videoUrl.replace("/api/video/", "").replace("/uploads/", "");
+        const altPath = join("/tmp", "uploads", filename);
+        try {
+          await access(altPath, constants.F_OK);
+          videoPath = altPath;
+        } catch {
+          return NextResponse.json(
+            { error: `Video file not found at ${videoPath} or ${altPath}` },
+            { status: 404 }
+          );
+        }
+      }
+      
+      audioInput = videoPath;
     }
 
     const client = new AssemblyAI({
       apiKey: apiKey,
     });
 
-    console.log("Starting transcription with AssemblyAI for:", videoPath);
+    console.log("Starting transcription with AssemblyAI for:", audioInput);
 
     const transcript = await client.transcripts.transcribe({
-      audio: videoPath,
+      audio: audioInput,
       speech_model: "best",
       language_codes: ["en", "hi"],
       word_boost: ["guys", "movie", "phone", "ok", "bye", "hello"],

@@ -22,7 +22,12 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const uploadsDir = join(process.cwd(), "public", "uploads");
+    // Use /tmp in Vercel (serverless), public/uploads locally
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+    const uploadsDir = isVercel 
+      ? join("/tmp", "uploads")
+      : join(process.cwd(), "public", "uploads");
+    
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
     }
@@ -33,12 +38,16 @@ export async function POST(request: NextRequest) {
 
     await writeFile(filepath, buffer);
 
-    const videoUrl = `/uploads/${filename}`;
+    // Return API route URL in Vercel, public path locally
+    const videoUrl = isVercel 
+      ? `/api/video/${filename}`
+      : `/uploads/${filename}`;
 
     return NextResponse.json({
       success: true,
       videoUrl,
       filename,
+      filepath, // Include filepath for server-side access
     });
   } catch (error) {
     console.error("Upload error:", error);
