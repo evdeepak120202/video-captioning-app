@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { access } from "fs/promises";
+import { access, readFile } from "fs/promises";
 import { join } from "path";
 import { constants } from "fs";
 import { AssemblyAI } from "assemblyai";
@@ -34,66 +34,69 @@ export async function POST(request: NextRequest) {
 
     // Handle both /api/video/ and /uploads/ paths
     const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
-    let audioInput: string; // Can be file path or URL
+    let audioInput: string | Buffer; // Can be file path, URL, or Buffer
     
-    if (isVercel) {
-      // In Vercel, use URL for AssemblyAI since files are in /tmp
-      const protocol = request.headers.get("x-forwarded-proto") || "https";
-      const host = request.headers.get("host") || request.headers.get("x-forwarded-host");
-      
-      if (!host) {
-        return NextResponse.json(
-          { error: "Could not determine host" },
-          { status: 500 }
-        );
-      }
-      
-      // Construct full URL
-      if (videoUrl.startsWith("/api/video/")) {
-        audioInput = `${protocol}://${host}${videoUrl}`;
-      } else if (videoUrl.startsWith("/uploads/")) {
-        // Convert /uploads/ to /api/video/
-        const filename = videoUrl.replace("/uploads/", "");
-        audioInput = `${protocol}://${host}/api/video/${filename}`;
-      } else if (videoUrl.startsWith("http")) {
-        // Already a full URL
-        audioInput = videoUrl;
-      } else {
-        // Assume it's a filename
-        audioInput = `${protocol}://${host}/api/video/${videoUrl}`;
-      }
+    // Check if it's an external URL
+    if (videoUrl.startsWith("http")) {
+      // For external URLs, use them directly
+      audioInput = videoUrl;
     } else {
-      // Local development - use file path
-      let videoPath: string;
-      
+      // Extract filename from videoUrl
+      let filename: string;
       if (videoUrl.startsWith("/api/video/")) {
-        const filename = videoUrl.replace("/api/video/", "");
-        videoPath = join("/tmp", "uploads", filename);
+        filename = videoUrl.replace("/api/video/", "");
       } else if (videoUrl.startsWith("/uploads/")) {
-        const filename = videoUrl.replace("/uploads/", "");
-        videoPath = join(process.cwd(), "public", "uploads", filename);
+        filename = videoUrl.replace("/uploads/", "");
       } else {
-        videoPath = join(process.cwd(), "public", videoUrl.startsWith("/") ? videoUrl.slice(1) : videoUrl);
+        filename = videoUrl;
       }
       
-      try {
-        await access(videoPath, constants.F_OK);
-      } catch {
-        // Try /tmp as fallback
-        const filename = videoUrl.replace("/api/video/", "").replace("/uploads/", "");
-        const altPath = join("/tmp", "uploads", filename);
+      // Find the file path
+      let videoPath: string;
+      if (isVercel) {
+        // In Vercel, files are in /tmp/uploads
+        videoPath = join("/tmp", "uploads", filename);
+      } else {
+        // Local: try public/uploads first, then /tmp/uploads
+        videoPath = join(process.cwd(), "public", "uploads", filename);
         try {
-          await access(altPath, constants.F_OK);
-          videoPath = altPath;
+          await access(videoPath, constants.F_OK);
         } catch {
-          return NextResponse.json(
-            { error: `Video file not found at ${videoPath} or ${altPath}` },
-            { status: 404 }
-          );
+          // Try /tmp as fallback
+          const altPath = join("/tmp", "uploads", filename);
+          try {
+            await access(altPath, constants.F_OK);
+            videoPath = altPath;
+          } catch {
+            return NextResponse.json(
+              { error: `Video file not found at ${videoPath} or ${altPath}` },
+              { status: 404 }
+            );
+          }
         }
       }
       
-      audioInput = videoPath;
+      // Verify file exists
+      try {
+        await access(videoPath, constants.F_OK);
+      } catch {
+        return NextResponse.json(
+          { error: `Video file not found at ${videoPath}` },
+          { status: 404 }
+        );
+      }
+      
+      // In Vercel, read the file and upload directly to AssemblyAI
+      // This avoids issues with URL accessibility
+      if (isVercel) {
+        console.log("Reading video file from:", videoPath);
+        const fileBuffer = await readFile(videoPath);
+        audioInput = fileBuffer;
+        console.log("File read successfully, size:", fileBuffer.length, "bytes");
+      } else {
+        // Local development - use file path
+        audioInput = videoPath;
+      }
     }
 
     const client = new AssemblyAI({

@@ -16,6 +16,8 @@ export default function EditorPage() {
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [captionStyle, setCaptionStyle] = useState<"bottom-centered" | "top-bar" | "karaoke">("bottom-centered");
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadFileName, setUploadFileName] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string>("");
@@ -25,27 +27,74 @@ export default function EditorPage() {
     if (!file) return;
 
     setIsUploading(true);
+    setUploadProgress(0);
+    setUploadFileName(file.name);
     setError("");
     setCaptions([]);
+    setVideoUrl(""); // Clear previous video
 
     try {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
+      // Use XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      const uploadPromise = new Promise<{ videoUrl: string; filename: string }>((resolve, reject) => {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(percentComplete);
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              if (data.success) {
+                resolve({ videoUrl: data.videoUrl, filename: data.filename });
+              } else {
+                reject(new Error(data.error || "Upload failed"));
+              }
+            } catch (parseError) {
+              reject(new Error("Failed to parse response"));
+            }
+          } else {
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              reject(new Error(errorData.error || "Upload failed"));
+            } catch {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          }
+        });
+
+        xhr.addEventListener("error", () => {
+          reject(new Error("Network error during upload"));
+        });
+
+        xhr.addEventListener("abort", () => {
+          reject(new Error("Upload cancelled"));
+        });
+
+        xhr.open("POST", "/api/upload");
+        xhr.send(formData);
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Upload failed");
-      }
-
-      setVideoUrl(data.videoUrl);
+      const result = await uploadPromise;
+      setVideoUrl(result.videoUrl);
+      setUploadProgress(100);
+      
+      // Clear progress after a short delay
+      setTimeout(() => {
+        setUploadProgress(0);
+        setUploadFileName("");
+      }, 2000);
     } catch (err: any) {
       setError(err.message || "Failed to upload video");
+      setUploadProgress(0);
+      setUploadFileName("");
     } finally {
       setIsUploading(false);
     }
@@ -470,38 +519,64 @@ export default function EditorPage() {
             <CardContent className="space-y-6">
               <div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-2xl p-8 md:p-12 text-center cursor-pointer transition-all duration-300 ${
-                  isDragActive
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 scale-[1.01] shadow-lg"
-                    : "border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                className={`border-2 border-dashed rounded-2xl p-8 md:p-12 text-center transition-all duration-300 ${
+                  isUploading
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 cursor-wait"
+                    : isDragActive
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 scale-[1.01] shadow-lg cursor-pointer"
+                    : "border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
                 }`}
               >
-                <input {...getInputProps()} />
+                <input {...getInputProps()} disabled={isUploading} />
                 <div className="flex flex-col items-center">
-                  <div className={`p-4 md:p-5 rounded-2xl mb-5 transition-all ${
-                    isDragActive 
-                      ? "bg-blue-100 dark:bg-blue-900/50 scale-110" 
-                      : "bg-slate-100 dark:bg-slate-800"
-                  }`}>
-                    <Upload className={`h-10 w-10 md:h-12 md:w-12 transition-colors ${
-                      isDragActive 
-                        ? "text-blue-600 dark:text-blue-400" 
-                        : "text-slate-400 dark:text-slate-500"
-                    }`} />
-                  </div>
-                  {isDragActive ? (
-                    <p className="text-blue-700 dark:text-blue-300 font-semibold text-lg">
-                      Drop it here!
-                    </p>
+                  {isUploading ? (
+                    <>
+                      <div className="p-4 md:p-5 rounded-2xl mb-5 bg-blue-100 dark:bg-blue-900/50">
+                        <Loader2 className="h-10 w-10 md:h-12 md:w-12 text-blue-600 dark:text-blue-400 animate-spin" />
+                      </div>
+                      <p className="text-blue-700 dark:text-blue-300 font-semibold text-base md:text-lg mb-2">
+                        Uploading {uploadFileName}...
+                      </p>
+                      <div className="w-full max-w-xs">
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 mb-2">
+                          <div
+                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                            style={{ width: `${uploadProgress}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          {uploadProgress}% complete
+                        </p>
+                      </div>
+                    </>
                   ) : (
-                    <div>
-                      <p className="text-slate-700 dark:text-slate-300 mb-2 font-semibold text-base md:text-lg">
-                        Drag & drop your video
-                      </p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        or click to browse • MP4 format only
-                      </p>
-                    </div>
+                    <>
+                      <div className={`p-4 md:p-5 rounded-2xl mb-5 transition-all ${
+                        isDragActive 
+                          ? "bg-blue-100 dark:bg-blue-900/50 scale-110" 
+                          : "bg-slate-100 dark:bg-slate-800"
+                      }`}>
+                        <Upload className={`h-10 w-10 md:h-12 md:w-12 transition-colors ${
+                          isDragActive 
+                            ? "text-blue-600 dark:text-blue-400" 
+                            : "text-slate-400 dark:text-slate-500"
+                        }`} />
+                      </div>
+                      {isDragActive ? (
+                        <p className="text-blue-700 dark:text-blue-300 font-semibold text-lg">
+                          Drop it here!
+                        </p>
+                      ) : (
+                        <div>
+                          <p className="text-slate-700 dark:text-slate-300 mb-2 font-semibold text-base md:text-lg">
+                            Drag & drop your video
+                          </p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            or click to browse • MP4 format only
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
