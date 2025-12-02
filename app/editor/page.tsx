@@ -3,12 +3,35 @@
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Player } from "@remotion/player";
+import { upload } from "@vercel/blob/client";
 import { VideoWithCaptions, Caption } from "../remotion/VideoWithCaptions";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Upload, Loader2, Download, Info, FileVideo, Subtitles, Sparkles, CheckCircle2, ArrowLeft } from "lucide-react";
+import {
+  Upload,
+  Loader2,
+  Download,
+  Info,
+  FileVideo,
+  Subtitles,
+  Sparkles,
+  CheckCircle2,
+  ArrowLeft,
+} from "lucide-react";
 import Link from "next/link";
 
 export default function EditorPage() {
@@ -34,58 +57,27 @@ export default function EditorPage() {
     setVideoUrl(""); // Clear previous video
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      // Use XMLHttpRequest for progress tracking
-      const xhr = new XMLHttpRequest();
-
-      const uploadPromise = new Promise<{ videoUrl: string; filename: string }>((resolve, reject) => {
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            const percentComplete = Math.round((e.loaded / e.total) * 100);
+      const options: any = {
+        access: "public",
+        handleUploadUrl: "/api/blob-upload-url",
+        multipart: true,
+        onUploadProgress: (event: any) => {
+          if (typeof event.percentage === "number") {
+            setUploadProgress(Math.round(event.percentage));
+          } else if (event.total) {
+            const percentComplete = Math.round(
+              (event.loaded / event.total) * 100
+            );
             setUploadProgress(percentComplete);
           }
-        });
+        },
+      };
 
-        xhr.addEventListener("load", () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              if (data.success) {
-                resolve({ videoUrl: data.videoUrl, filename: data.filename });
-              } else {
-                reject(new Error(data.error || "Upload failed"));
-              }
-            } catch (parseError) {
-              reject(new Error("Failed to parse response"));
-            }
-          } else {
-            try {
-              const errorData = JSON.parse(xhr.responseText);
-              reject(new Error(errorData.error || "Upload failed"));
-            } catch {
-              reject(new Error(`Upload failed with status ${xhr.status}`));
-            }
-          }
-        });
+      const blob = await upload(file.name, file, options);
 
-        xhr.addEventListener("error", () => {
-          reject(new Error("Network error during upload"));
-        });
-
-        xhr.addEventListener("abort", () => {
-          reject(new Error("Upload cancelled"));
-        });
-
-        xhr.open("POST", "/api/upload");
-        xhr.send(formData);
-      });
-
-      const result = await uploadPromise;
-      setVideoUrl(result.videoUrl);
+      setVideoUrl(blob.url);
       setUploadProgress(100);
-      
+
       // Clear progress after a short delay
       setTimeout(() => {
         setUploadProgress(0);
@@ -534,20 +526,12 @@ export default function EditorPage() {
                       <div className="p-4 md:p-5 rounded-2xl mb-5 bg-blue-100 dark:bg-blue-900/50">
                         <Loader2 className="h-10 w-10 md:h-12 md:w-12 text-blue-600 dark:text-blue-400 animate-spin" />
                       </div>
-                      <p className="text-blue-700 dark:text-blue-300 font-semibold text-base md:text-lg mb-2">
+                      <p className="text-blue-700 dark:text-blue-300 font-semibold text-base md:text-lg mb-1">
                         Uploading {uploadFileName}...
                       </p>
-                      <div className="w-full max-w-xs">
-                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 mb-2">
-                          <div
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-                            style={{ width: `${uploadProgress}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          {uploadProgress}% complete
-                        </p>
-                      </div>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        This may take a while depending on your video size and connection.
+                      </p>
                     </>
                   ) : (
                     <>
